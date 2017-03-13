@@ -11,35 +11,30 @@ void *pedestrians(void *arg);
 void vbuf_init();
 void pbuf_init();
 
-struct vehicle_buf {
-    int  *buf;         /* Buffer array */         
-    int   n;           /* Maximum number of slots */
-    int   front;       /* buf[(front+1)%n] is first item */
-    int   rear;        /* buf[rear%n] is last item */
-    sem_t mutex;       /* Protects accesses to buf */
-    sem_t slots;       /* Counts available slots */
-    sem_t items;       /* Counts available items */
-};
+//struct vehicle_buf {
+    int  *vbuf;         /* Buffer array */         
+    int   vn;           /* Maximum number of slots */
+    int   vfront;       /* buf[(front+1)%n] is first item */
+    int   vrear;        /* buf[rear%n] is last item */
+    sem_t vmutex;       /* Protects accesses to buf */
+    sem_t vslots;       /* Counts available slots */
+    sem_t vitems;       /* Counts available items */
+//} typedef vehicle_buf;
 
-struct pedestrian_buf {
-    int  *buf;         /* Buffer array */
-    int   n;           /* Maximum number of slots */
-    int   front;       /* buf[(front+1)%n] is first item */
-    int   rear;        /* buf[rear%n] is last item */
-    sem_t mutex;       /* Protects accesses to buf */
-    sem_t slots;       /* Counts available slots */
-    sem_t items;       /* Counts available items */
-}; 
+//struct pedestrian_buf {
+    int  *pbuf;         /* Buffer array */
+    int   pn;           /* Maximum number of slots */
+    int   pfront;       /* buf[(front+1)%n] is first item */
+    int   prear;        /* buf[rear%n] is last item */
+    sem_t pmutex;       /* Protects accesses to buf */
+    sem_t pslots;       /* Counts available slots */
+    sem_t pitems;       /* Counts available items */
+//} typedef pedestrian_buf; 
 
-struct vehicle_buf vbuf;
-struct pedestrian_buf pbuf;
-
-//typedef struct {
-  //  vehicle_buf vbuf;
-  //  pedestrian_buf pbuf;     
-    pthread_t *pedestrian_thread;
-    pthread_t *vehicle_thread;
-//} simulator;
+// vehicle_buf *vbuf;
+// pedestrian_buf *pbuf;
+pthread_t *pedestrian_thread;
+pthread_t *vehicle_thread;
 
 /* INIT SECTION */
 void init()
@@ -52,23 +47,25 @@ void init()
 
 void vbuf_init()
 {
-    &vbuf->buf = Calloc(K, sizeof(int)); 
-    &vbuf->n = K;                  /* Buffer holds max of n items */
-    &vbuf->front = &vbuf->rear = 0;   /* Empty buffer iff front == rear */
-    Sem_init(&vbuf->mutex, 0, 1); /* Binary semaphore for locking */
-    Sem_init(&vbuf->slots, 0, K); /* Initially, buf has n empty slots */
-    Sem_init(&vbuf->items, 0, 0); /* Initially, buf has zero items */
+    //vehicle_buf *vbuf = buf;
+    vbuf = Calloc(K, sizeof(int)); 
+    vn = K;                  /* Buffer holds max of n items */
+    vfront = vrear = 0;   /* Empty buffer iff front == rear */
+    Sem_init(&vmutex, 0, 1); /* Binary semaphore for locking */
+    Sem_init(&vslots, 0, K); /* Initially, buf has n empty slots */
+    Sem_init(&vitems, 0, 0); /* Initially, buf has zero items */
  
 }
 
 void pbuf_init()
 {
-    pbuf->buf = Calloc(K, sizeof(int));
-    pbuf->n = K;                  /* Buffer holds max of n items */
-    pbuf->front = pbuf->rear = 0;   /* Empty buffer iff front == rear */
-    Sem_init(&pbuf->mutex, 0, 1); /* Binary semaphore for locking */
-    Sem_init(&pbuf->slots, 0, K); /* Initially, buf has n empty slots */
-    Sem_init(&pbuf->items, 0, 0); /* Initially, buf has zero items */
+    //pedestrian_buf *pbuf = buf;
+    pbuf = Calloc(K, sizeof(int));
+    pn = K;                  /* Buffer holds max of n items */
+    pfront = prear = 0;   /* Empty buffer iff front == rear */
+    Sem_init(&pmutex, 0, 1); /* Binary semaphore for locking */
+    Sem_init(&pslots, 0, K); /* Initially, buf has n empty slots */
+    Sem_init(&pitems, 0, 0); /* Initially, buf has zero items */
  
 }
 
@@ -100,10 +97,10 @@ void *vehicles(void *arg)
     // Note that the calls can be moved to helper 
     // functions if needed..
     int place = vehicle_arrive(info);
-    P(&vbuf->mutex);
+    P(&vmutex);
     vehicle_drive(info);
     vehicle_leave(info);
-    V(&vbuf->mutex);
+    V(&vmutex);
 
     // end of the threads main function 
     // time to die?
@@ -144,10 +141,10 @@ void *pedestrians(void *arg)
     // Note that the calls can also be made in 
     //helper functions
     int place = pedestrian_arrive(info);
-    P(&pbuf->mutex);
+    P(&pmutex);
     pedestrian_walk(info);
     pedestrian_leave(info);
-    V(&pbuf->mutex);
+    V(&pmutex);
 
     return NULL;
 }
@@ -177,5 +174,7 @@ void clean()
     for (int i = 0; i < num_vehicles; i++) {
         Pthread_join(vehicle_thread[i], NULL);
     }
+    Free(vbuf);
+    Free(pbuf);
 }
 /**** END OF CLEAN UP ***************************/
