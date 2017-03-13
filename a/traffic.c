@@ -8,24 +8,71 @@ int num_pedestrians;
 
 void *vehicles (void* arg);
 void *pedestrians(void *arg);
+void vbuf_init();
+void pbuf_init();
 
-sem_t thread_mutex;
+struct vehicle_buf {
+    int  *buf;         /* Buffer array */         
+    int   n;           /* Maximum number of slots */
+    int   front;       /* buf[(front+1)%n] is first item */
+    int   rear;        /* buf[rear%n] is last item */
+    sem_t mutex;       /* Protects accesses to buf */
+    sem_t slots;       /* Counts available slots */
+    sem_t items;       /* Counts available items */
+};
 
-pthread_t *pedestrian_thread;
-pthread_t *vehicle_thread;
+struct pedestrian_buf {
+    int  *buf;         /* Buffer array */
+    int   n;           /* Maximum number of slots */
+    int   front;       /* buf[(front+1)%n] is first item */
+    int   rear;        /* buf[rear%n] is last item */
+    sem_t mutex;       /* Protects accesses to buf */
+    sem_t slots;       /* Counts available slots */
+    sem_t items;       /* Counts available items */
+}; 
 
+struct vehicle_buf vbuf;
+struct pedestrian_buf pbuf;
 
-/* INIT SECTION *********************************/
+//typedef struct {
+  //  vehicle_buf vbuf;
+  //  pedestrian_buf pbuf;     
+    pthread_t *pedestrian_thread;
+    pthread_t *vehicle_thread;
+//} simulator;
+
+/* INIT SECTION */
 void init()
-{
-    /********************************************/
-    /* YOU MUST IMPLEMENT THIS FUNCTION         */
-    /* HERE YOU COULD CREATE THE LOCKS ETC.     */
-    /********************************************/ 
-    sem_init(&thread_mutex, 0, 1);
+{   
     pedestrian_thread = malloc(sizeof(pthread_t) * num_pedestrians);
-    vehicle_thread = malloc(sizeof(pthread_t) * num_vehicles);
+    vehicle_thread = malloc(sizeof(pthread_t) * num_vehicles);  
+    vbuf_init();
+    pbuf_init(); 
 }
+
+void vbuf_init()
+{
+    &vbuf->buf = Calloc(K, sizeof(int)); 
+    &vbuf->n = K;                  /* Buffer holds max of n items */
+    &vbuf->front = &vbuf->rear = 0;   /* Empty buffer iff front == rear */
+    Sem_init(&vbuf->mutex, 0, 1); /* Binary semaphore for locking */
+    Sem_init(&vbuf->slots, 0, K); /* Initially, buf has n empty slots */
+    Sem_init(&vbuf->items, 0, 0); /* Initially, buf has zero items */
+ 
+}
+
+void pbuf_init()
+{
+    pbuf->buf = Calloc(K, sizeof(int));
+    pbuf->n = K;                  /* Buffer holds max of n items */
+    pbuf->front = pbuf->rear = 0;   /* Empty buffer iff front == rear */
+    Sem_init(&pbuf->mutex, 0, 1); /* Binary semaphore for locking */
+    Sem_init(&pbuf->slots, 0, K); /* Initially, buf has n empty slots */
+    Sem_init(&pbuf->items, 0, 0); /* Initially, buf has zero items */
+ 
+}
+
+
 /**** END OF INIT *******************************/
 
 /* VEHICLE THREADS ******************************/
@@ -53,10 +100,10 @@ void *vehicles(void *arg)
     // Note that the calls can be moved to helper 
     // functions if needed..
     int place = vehicle_arrive(info);
-    P(&thread_mutex);
+    P(&vbuf->mutex);
     vehicle_drive(info);
     vehicle_leave(info);
-    V(&thread_mutex);
+    V(&vbuf->mutex);
 
     // end of the threads main function 
     // time to die?
@@ -97,10 +144,10 @@ void *pedestrians(void *arg)
     // Note that the calls can also be made in 
     //helper functions
     int place = pedestrian_arrive(info);
-    P(&thread_mutex);
+    P(&pbuf->mutex);
     pedestrian_walk(info);
     pedestrian_leave(info);
-    V(&thread_mutex);
+    V(&pbuf->mutex);
 
     return NULL;
 }
