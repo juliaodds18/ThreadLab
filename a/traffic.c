@@ -6,68 +6,44 @@ int K;
 int num_vehicles;
 int num_pedestrians;
 
+
 void *vehicles (void* arg);
 void *pedestrians(void *arg);
-void vbuf_init();
-void pbuf_init();
 
-//struct vehicle_buf {
-    int  *vbuf;         /* Buffer array */         
-    int   vn;           /* Maximum number of slots */
-    int   vfront;       /* buf[(front+1)%n] is first item */
-    int   vrear;        /* buf[rear%n] is last item */
-    sem_t vmutex;       /* Protects accesses to buf */
-    sem_t vslots;       /* Counts available slots */
-    sem_t vitems;       /* Counts available items */
-//} typedef vehicle_buf;
-
-//struct pedestrian_buf {
-    int  *pbuf;         /* Buffer array */
-    int   pn;           /* Maximum number of slots */
-    int   pfront;       /* buf[(front+1)%n] is first item */
-    int   prear;        /* buf[rear%n] is last item */
-    sem_t pmutex;       /* Protects accesses to buf */
-    sem_t pslots;       /* Counts available slots */
-    sem_t pitems;       /* Counts available items */
-//} typedef pedestrian_buf; 
 
 // vehicle_buf *vbuf;
 // pedestrian_buf *pbuf;
 pthread_t *pedestrian_thread;
 pthread_t *vehicle_thread;
+sem_t vehicle_sem;
+sem_t pedes_sem;
+int vcounter;
+int pcounter;
+int remaining_vehicle;
+int remaining_pedestrian;
+int k;
+sem_t w;
+sem_t update;
+sem_t remaining;
 
 /* INIT SECTION */
 void init()
 {   
+    // reader writer semaphore
+    sem_init(&vehicle_sem, 0, 5);
+    sem_init(&pedes_sem, 0, 5);
+    sem_init(&w, 0, 1);
+    sem_init(&remaining, 0, 1);
+    sem_init(&update, 0, 1);
+    remaining_vehicle = num_vehicles;
+    remaining_pedestrian = num_pedestrians;
+    vcounter = 0;
+    pcounter = K;
+    k = 5;
     pedestrian_thread = malloc(sizeof(pthread_t) * num_pedestrians);
     vehicle_thread = malloc(sizeof(pthread_t) * num_vehicles);  
-    vbuf_init();
-    pbuf_init(); 
 }
 
-void vbuf_init()
-{
-    //vehicle_buf *vbuf = buf;
-    vbuf = Calloc(K, sizeof(int)); 
-    vn = K;                  /* Buffer holds max of n items */
-    vfront = vrear = 0;   /* Empty buffer iff front == rear */
-    Sem_init(&vmutex, 0, 1); /* Binary semaphore for locking */
-    Sem_init(&vslots, 0, K); /* Initially, buf has n empty slots */
-    Sem_init(&vitems, 0, 0); /* Initially, buf has zero items */
- 
-}
-
-void pbuf_init()
-{
-    //pedestrian_buf *pbuf = buf;
-    pbuf = Calloc(K, sizeof(int));
-    pn = K;                  /* Buffer holds max of n items */
-    pfront = prear = 0;   /* Empty buffer iff front == rear */
-    Sem_init(&pmutex, 0, 1); /* Binary semaphore for locking */
-    Sem_init(&pslots, 0, K); /* Initially, buf has n empty slots */
-    Sem_init(&pitems, 0, 0); /* Initially, buf has zero items */
- 
-}
 
 
 /**** END OF INIT *******************************/
@@ -89,19 +65,29 @@ void *vehicles(void *arg)
 
     // Get the argument pass via the void* 
     thread_info *info = arg;
-
     // Following are the needed calls to the 
     //functions in traffic.c 
     // You must call them in the proper order 
     //(see above).
     // Note that the calls can be moved to helper 
     // functions if needed..
-    int place = vehicle_arrive(info);
-    P(&vmutex);
-    vehicle_drive(info);
-    vehicle_leave(info);
-    V(&vmutex);
-
+   int place = vehicle_arrive(info);
+    //P(&w);
+    if(vcounter > 0 ) {
+	pcounter = K;
+        P(&vehicle_sem);
+        vehicle_drive(info);
+        vehicle_leave(info);
+        vcounter--;
+        V(&vehicle_sem);
+    }
+    //V(&w);
+    /*if(vcounter >= 5 || remaining_vehicle == 0) {
+        P(&update);
+        vcounter = 0;
+        V(&update);
+    }*/
+    
     // end of the threads main function 
     // time to die?
     return NULL;
@@ -113,8 +99,10 @@ void spawn_vehicle(thread_info *arg)
      * MUST USE vehicles(void *arg) AS THE 
      * FUNCTION TO EXECUTE
      */
+    P(&w);
+    //remaining_vehicle--;
     pthread_create(&vehicle_thread[arg->thread_nr], 0, vehicles, arg);
-
+    V(&w);
 }
 /**** END OF VEHICLE THREAD CODE ****************/
 
@@ -140,13 +128,25 @@ void *pedestrians(void *arg)
     // in this order
     // Note that the calls can also be made in 
     //helper functions
+    
     int place = pedestrian_arrive(info);
-    P(&pmutex);
-    pedestrian_walk(info);
-    pedestrian_leave(info);
-    V(&pmutex);
-
-    return NULL;
+    
+    //P(&w);
+    if(pcounter > 0) {
+	vcounter = K;
+        P(&vehicle_sem);
+        pedestrian_walk(info);
+        pedestrian_leave(info);
+        pcounter--;
+        V(&vehicle_sem);
+    }
+   // V(&w);
+   /* if(pcounter >= 2 || remaining_pedestrian == 0) {
+        P(&update);
+	pcounter = 0;
+        V(&update);
+    } */  
+     return NULL;
 }
 void spawn_pedestrian(thread_info *arg)
 {
@@ -155,8 +155,10 @@ void spawn_pedestrian(thread_info *arg)
      * MUST USE pedestrians(void *arg) AS 
      * THE FUNCTION TO EXECUTE
      */
+    P(&w);
+    //remaining_pedestrian--;
     pthread_create(&pedestrian_thread[arg->thread_nr], 0, pedestrians, arg);
-
+    V(&w);
 }
 /**** END OF VEHICLE THREAD CODE ****************/
 
@@ -174,7 +176,5 @@ void clean()
     for (int i = 0; i < num_vehicles; i++) {
         Pthread_join(vehicle_thread[i], NULL);
     }
-    Free(vbuf);
-    Free(pbuf);
 }
 /**** END OF CLEAN UP ***************************/
