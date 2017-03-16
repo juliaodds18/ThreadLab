@@ -52,7 +52,6 @@ void init()
 {
     sem_init(&iswaiting_mutex, 0, 0);    
     sem_init(&order_mutex, 0, 0);
- 
     sem_init(&iscrossing_mutex, 0, 1);
    
     to_cross = 0;
@@ -90,12 +89,13 @@ void *vehicles(void *arg)
     P(&stop);
     //Let the controller know that the pedestrian is crossing.
     V(&order_mutex);
+
     vehicle_drive(info);
     vehicle_leave(info);
     has_crossed++;
-    if(has_crossed == to_cross)
-    {
-       
+
+    // If everyone has crossed the road, unlock the crossing mutex
+    if (has_crossed == to_cross) {
         V(&iscrossing_mutex);
         return NULL;
     }  
@@ -124,9 +124,9 @@ void *pedestrians(void *arg)
     pedestrian_walk(info);
     pedestrian_leave(info);
     has_crossed++;
+
     //Let the controller know that everyone has crossed.
-    if(has_crossed == to_cross)
-    {
+    if (has_crossed == to_cross) {
         V(&iscrossing_mutex);
         return NULL;
     }
@@ -134,6 +134,7 @@ void *pedestrians(void *arg)
     P(&iswaiting_mutex);
     return NULL;
 }
+
 void *control()
 {
     int cross_count = 0;
@@ -148,10 +149,9 @@ void *control()
         to_cross = vehicle.count;
         has_crossed = 0;
  
-        for(int i = 0; i < to_cross; i++ )
-        {
-            if(vehicle.front != vehicle.rear)
-            {
+        for (int i = 0; i < to_cross; i++) {
+	    // If there is something inside of the vehicle buffer, remove it.
+            if (vehicle.front != vehicle.rear) {
                 to_unlock = sbuf_remove(&vehicle);
                 V(to_unlock);                          
                 P(&order_mutex);
@@ -159,47 +159,50 @@ void *control()
             }  
            
         }  
-        if(to_cross != 0)
-        {        
+
+        if (to_cross != 0){        
             P(&iscrossing_mutex);
-            if((cross_count + to_cross) == (num_vehicles + num_pedestrians))
-            {
+	    //Check if there are any vehicles or pedestrians left. If not, stop.
+            if ((cross_count + to_cross) == (num_vehicles + num_pedestrians)) {
                 break;
             }
             sem_trywait(&order_mutex);
             cross_count += to_cross;
         }
+
         //catch horizontal traffic.
         to_cross = pedestrian.count;
         has_crossed = 0;
-        for(int i = 0; i < to_cross; i++ )
-        {
-            if(pedestrian.front != pedestrian.rear)
-            {
+   
+       for (int i = 0; i < to_cross; i++) {
+	    // If there is something inside of the pedestrian buffer, remove it. 
+            if(pedestrian.front != pedestrian.rear) {
                 to_unlock = sbuf_remove(&pedestrian);
                 V(to_unlock);
                 P(&order_mutex);
                 sem_trywait(&iscrossing_mutex);
             }        
         }        
-        if(to_cross != 0)
-        {
+
+        if (to_cross != 0) {
             P(&iscrossing_mutex);
-            if((cross_count + to_cross) == (num_vehicles + num_pedestrians))
-            {
+	    // Check if there are any vehicles or pedestrians left. If not, stop. 
+            if ((cross_count + to_cross) == (num_vehicles + num_pedestrians)) {
                 break;
             }
             sem_trywait(&order_mutex);
             cross_count += to_cross;
-           
         }
     }
+
     return NULL;
 }
-/*Helper functions
-*/
+
+//Helper functions
  
-//Buffer functions,
+//Buffer functions
+
+// Initialize the buffer 
 void sbuf_init(sbuf_t *sp, int n)
 {
     sp->buf = (sem_t **)Calloc(n, sizeof(sem_t *));
@@ -211,10 +214,14 @@ void sbuf_init(sbuf_t *sp, int n)
     sem_init(&sp->items, 0, 0);
    
 }
+
+// Free the buffer
 void sbuf_free(sbuf_t *sp)
 {
     free(sp->buf);
 }
+
+// Insert into the buffer
 void sbuf_insert(sbuf_t *sp, sem_t *item)
 {
     P(&sp->slots);
@@ -225,6 +232,8 @@ void sbuf_insert(sbuf_t *sp, sem_t *item)
     V(&sp->items);
    
 }
+
+// Remove from the buffer
 sem_t *sbuf_remove(sbuf_t *sp)
 {
     sem_t *top;
@@ -236,6 +245,8 @@ sem_t *sbuf_remove(sbuf_t *sp)
     V(&sp->slots);
     return top;
 }
+
+// Clean up all of the threads and free all of the buffers 
 void clean()
 {
    
