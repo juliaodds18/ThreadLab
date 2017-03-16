@@ -37,8 +37,8 @@ void *vehicles(void *arg);
 void *control();
  
 //Buffers
-sbuf_t traffic_v;
-sbuf_t traffic_h;
+sbuf_t vehicle;
+sbuf_t pedestrian;
  
 //Intersection-Coordinator
 pthread_t controller;
@@ -61,8 +61,8 @@ void init()
     pedestrian_thread = malloc(sizeof(pthread_t) * num_pedestrians);
     vehicle_thread = malloc(sizeof(pthread_t) * num_vehicles);
    
-    sbuf_init(&traffic_h, K);
-    sbuf_init(&traffic_v, K);
+    sbuf_init(&pedestrian, K);
+    sbuf_init(&vehicle, K);
     Pthread_create(&controller, 0, control, 0);
 }
  
@@ -83,7 +83,7 @@ void *vehicles(void *arg)
     sem_init(&stop, 0, 0);
      
     int place = vehicle_arrive(info);
-    sbuf_insert(&traffic_v, &stop);
+    sbuf_insert(&vehicle, &stop);
     //Let the controller know that a vehicle wants to cross.            
     V(&iswaiting_mutex);
     //Block until controller gives green light.
@@ -112,7 +112,7 @@ void *pedestrians(void *arg)
    
     int place = pedestrian_arrive(info);
    
-    sbuf_insert(&traffic_h, &stop);
+    sbuf_insert(&pedestrian, &stop);
  
     //Let the controller know that a pedestrian wants to cross.
     V(&iswaiting_mutex);
@@ -145,14 +145,14 @@ void *control()
         //Wait & Block while loop.
         P(&iswaiting_mutex);
         //catch vertical traffic.
-        to_cross = traffic_v.count;
+        to_cross = vehicle.count;
         has_crossed = 0;
  
         for(int i = 0; i < to_cross; i++ )
         {
-            if(traffic_v.front != traffic_v.rear)
+            if(vehicle.front != vehicle.rear)
             {
-                to_unlock = sbuf_remove(&traffic_v);
+                to_unlock = sbuf_remove(&vehicle);
                 V(to_unlock);                          
                 P(&order_mutex);
                 sem_trywait(&iscrossing_mutex);
@@ -170,13 +170,13 @@ void *control()
             cross_count += to_cross;
         }
         //catch horizontal traffic.
-        to_cross = traffic_h.count;
+        to_cross = pedestrian.count;
         has_crossed = 0;
         for(int i = 0; i < to_cross; i++ )
         {
-            if(traffic_h.front != traffic_h.rear)
+            if(pedestrian.front != pedestrian.rear)
             {
-                to_unlock = sbuf_remove(&traffic_h);
+                to_unlock = sbuf_remove(&pedestrian);
                 V(to_unlock);
                 P(&order_mutex);
                 sem_trywait(&iscrossing_mutex);
@@ -249,7 +249,7 @@ void clean()
     }
    
     Pthread_join(controller, NULL);
-    sbuf_free(&traffic_v);
-    sbuf_free(&traffic_h);
+    sbuf_free(&vehicle);
+    sbuf_free(&pedestrian);
        
 } 
