@@ -7,6 +7,7 @@ int num_vehicles;
 int num_pedestrians;
 int to_cross;
 int has_crossed;
+int cross_count;
 
 typedef struct {
     sem_t **buf;
@@ -32,11 +33,15 @@ void sbuf_init(sbuf_t *sp, int n);
 void sbuf_deinit(sbuf_t *sp);
 void sbuf_insert(sbuf_t *sp, sem_t *sem);
 sem_t *sbuf_remove(sbuf_t *sp);
+void pedestrianCross(); 
+void vehicleCross(); 
+int checkIfDone(); 
 
 /* SEMAPHORES */
 sem_t waiting_mutex;
 sem_t crossing_mutex;
 sem_t order_mutex;
+sem_t *to_unlock;
 
 /* THREADS */ 
 pthread_t *pedestrian_thread;
@@ -52,6 +57,7 @@ void init()
 
     to_cross = 0;
     has_crossed = 0;
+    cross_count = 0;
 
     pedestrian_thread = malloc(sizeof(pthread_t) * num_pedestrians);
     vehicle_thread = malloc(sizeof(pthread_t) * num_vehicles);
@@ -150,65 +156,70 @@ void spawn_pedestrian(thread_info *arg)
 /* HELPER FUNCTIONS */
 void *control()
 {
-    int cross_count = 0;
-    to_cross = 0;
-    sem_t *to_unlock;
     while(1)
-{
-
-        //Wait & Block while loop.
+    {
+        // Wait & Block while loop.
         P(&waiting_mutex);
-        //catch vertical traffic.
-        to_cross = vehicle.count;
-        has_crossed = 0;
+        int ret;
 
-        for (int i = 0; i < to_cross; i++) {
-            // If there is something inside of the vehicle buffer, remove it.
-            if (vehicle.front != vehicle.rear) {
-                to_unlock = sbuf_remove(&vehicle);
-                V(to_unlock);
-                P(&order_mutex);
-                sem_trywait(&crossing_mutex);
-            }
+        // Check if pedestrians can cross
+        pedestrianCross();
+        ret = checkIfDone();
+        if(ret == 0)
+            break;
 
-        }
+        // Check if vehicles can cross
+        vehicleCross();
+        ret = checkIfDone();
+        if(ret == 0)
+            break;
+    }
+    return NULL;
+}
 
-        if (to_cross != 0){
-            P(&crossing_mutex);
-            //Check if there are any vehicles or pedestrians left. If not, stop.
-            if ((cross_count + to_cross) == (num_vehicles + num_pedestrians)) {
-                break;
-            }
-            sem_trywait(&order_mutex);
-            cross_count += to_cross;
-        }
+void vehicleCross() {
+    // Catch vertical traffic.
+    to_cross = vehicle.count;
+    has_crossed = 0;
 
-        //catch horizontal traffic.
-        to_cross = pedestrian.count;
-        has_crossed = 0;
-
-       for (int i = 0; i < to_cross; i++) {
-            // If there is something inside of the pedestrian buffer, remove it. 
-            if(pedestrian.front != pedestrian.rear) {
-                to_unlock = sbuf_remove(&pedestrian);
-                V(to_unlock);
-                P(&order_mutex);
-                sem_trywait(&crossing_mutex);
-            }
-        }
-
-        if (to_cross != 0) {
-            P(&crossing_mutex);
-            // Check if there are any vehicles or pedestrians left. If not, stop. 
-            if ((cross_count + to_cross) == (num_vehicles + num_pedestrians)) {
-                break;
-            }
-            sem_trywait(&order_mutex);
-            cross_count += to_cross;
+    for (int i = 0; i < to_cross; i++) {
+        // If there is something inside of the vehicle buffer, remove it.
+        if (vehicle.front != vehicle.rear) {
+            to_unlock = sbuf_remove(&vehicle);
+            V(to_unlock);
+            P(&order_mutex);
+            sem_trywait(&crossing_mutex);
         }
     }
+}
 
-    return NULL;
+void pedestrianCross() {
+    // Catch horizontal traffic.
+    to_cross = pedestrian.count;
+    has_crossed = 0;
+
+   for (int i = 0; i < to_cross; i++) {
+        // If there is something inside of the pedestrian buffer, remove it.
+        if(pedestrian.front != pedestrian.rear) {
+            to_unlock = sbuf_remove(&pedestrian);
+            V(to_unlock);
+            P(&order_mutex);
+            sem_trywait(&crossing_mutex);
+        }
+    }
+}
+int checkIfDone() {
+    if(to_cross != 0) {
+        P(&crossing_mutex);
+
+        //Check if there are any vehicles or pedestrians left. If not, stop the while loop in controli() by returning 0.
+        if((cross_count + to_cross) == (num_vehicles + num_pedestrians)) {
+            return 0;
+        }
+        sem_trywait(&order_mutex);
+        cross_count += to_cross;
+    }
+    return 1;
 }
 
 /* Create an empty, bounded, shared FIFO buffer with n slots */

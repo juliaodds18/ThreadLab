@@ -5,8 +5,8 @@ provide your team information in below.
        Format!
 
  === User information ===
- Group: 
- User 1: 
- SSN: X
- User 2: 
- SSN: X
+ Group: bunchofcrazyassholes 
+ User 1: juliao15
+ SSN: 1808962449
+ User 2: sandraos15
+ SSN: 0708892779
