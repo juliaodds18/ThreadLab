@@ -5,6 +5,7 @@
 int K;
 int num_vehicles;
 int num_pedestrians;
+
 // How many pedestrian or vehicle wants to cross
 int crossing;
 // How many pedestrian or vehicle have crossed
@@ -30,21 +31,21 @@ void *vehicles (void* arg);
 void *pedestrians(void *arg);
 
 /* HELPER FUNCIONS */
-void *control();
+void *controller();
 void sbuf_init(sbuf_t *sp);
 void sbuf_deinit(sbuf_t *sp);
 void sbuf_insert(sbuf_t *sp, sem_t *sem);
 sem_t *sbuf_remove(sbuf_t *sp);
-void pedestrianCross();
-void vehicleCross();
-int checkIfDone();
+void pedestrian_cross();
+void vehicle_cross();
+int check_if_done();
 
 /* SEMAPHORES */ 
 // Lets the controll know i vehicle or pedestrian wants to cross
 sem_t waiting_mutex;
 // Lock when somtehing is crossing
 sem_t crossing_mutex;
-// Lets the controller know how is crossing 
+// Lets the controller know who is crossing 
 sem_t control_mutex;
 // unlock after removing from buffer 
 sem_t *unlock;
@@ -70,7 +71,7 @@ void init()
 
     sbuf_init(&pedestrian);
     sbuf_init(&vehicle);
-    Pthread_create(&control_thread, 0, control, 0);
+    Pthread_create(&control_thread, 0, controller, 0);
 }
 /* END OF INIT */
 
@@ -79,6 +80,7 @@ void *vehicles(void *arg)
 {
     thread_info *info = arg;
     // semaphore to lock until the vehicle can cross
+    // used in sbuf_insert function 
     sem_t wait;
     sem_init(&wait, 0, 0);
 
@@ -98,11 +100,13 @@ void *vehicles(void *arg)
     // When everyone has crossed unlock the crossing mutex
     if (has_crossed == crossing) {
         V(&crossing_mutex);
-        return NULL;}
+        return NULL;
+    } 
 
-P(&waiting_mutex);
+    P(&waiting_mutex);
     return NULL;
 }
+
 void spawn_vehicle(thread_info *arg)
 {
     Pthread_create(&vehicle_thread[arg->thread_nr], 0, vehicles, arg);
@@ -114,6 +118,7 @@ void *pedestrians(void *arg)
 {
     thread_info *info = arg;
     // semaphore to lock until the pedestrian can cross
+    // used in sbuf_insert 
     sem_t wait;
     sem_init(&wait, 0, 0);
 
@@ -150,7 +155,7 @@ void spawn_pedestrian(thread_info *arg)
 /* HELPER FUNCTIONS */
 
 /* calls the other helper functions */
-void *control()
+void *controller()
 {
     while(1)
     {
@@ -158,14 +163,14 @@ void *control()
         int ret;
 
         // Let pedestrians cross
-        pedestrianCross();
-        ret = checkIfDone();
+        pedestrian_cross();
+        ret = check_if_done();
         if(ret == 0)
             break;
 
         // Let vehicles cross
-        vehicleCross();
-        ret = checkIfDone();
+        vehicle_cross();
+        ret = check_if_done();
         if(ret == 0)
             break;
     }
@@ -173,7 +178,7 @@ void *control()
 }
 
 /* Let the vehice cross */
-void vehicleCross() {
+void vehicle_cross() {
     crossing = vehicle.count;
     has_crossed = 0;
 
@@ -190,8 +195,7 @@ void vehicleCross() {
 }
 
 /* Let the pedestrians cross */
-void pedestrianCross() {
-    // Catch horizontal traffic.
+void pedestrian_cross() {
     crossing = pedestrian.count;
     has_crossed = 0;
 
@@ -206,6 +210,22 @@ void pedestrianCross() {
         }
     }
 }
+
+/* Check if the traffic is over */
+int check_if_done() {
+    if(crossing != 0) {
+        P(&crossing_mutex);
+        total_crossed += crossing;
+        // If all vehicles and pedestrians have corossed return
+        if(total_crossed == (num_vehicles + num_pedestrians)) {
+            return 0;
+        }
+        sem_trywait(&control_mutex);
+    }
+
+    return 1;
+}
+
 /* Create an empty, bounded, shared FIFO buffer with n slots */
 void sbuf_init(sbuf_t *sp)
 {
@@ -229,7 +249,7 @@ void sbuf_insert(sbuf_t *sp, sem_t *item)
     P(&sp->slots);
     P(&sp->mutex);
     sp->count++;
-    sp->buf[(++sp->rear)%(K)] = item;
+    sp->buf[(++sp->rear)%K] = item;
     V(&sp->mutex);
     V(&sp->items);
 }
@@ -241,7 +261,7 @@ sem_t *sbuf_remove(sbuf_t *sp)
     P(&sp->items);
     P(&sp->mutex);
     sp->count--;
-    top = sp->buf[(++sp->front)%(K)];
+    top = sp->buf[(++sp->front)%K];
     V(&sp->mutex);
     V(&sp->slots);
     return top;
@@ -265,18 +285,5 @@ void clean()
 }
 /* END OF CLEAN UP */
 
-/* Check if the traffic is over */
-int checkIfDone() {
-    if(crossing != 0) {
-        P(&crossing_mutex);
-        total_crossed += crossing;
-        // If all vehicles and pedestrians have corossed return
-        if(total_crossed == (num_vehicles + num_pedestrians)) {
-            return 0;
-        }
-        sem_trywait(&control_mutex);
 
-    }
-    return 1;
-}
 
